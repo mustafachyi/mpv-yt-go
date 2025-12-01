@@ -12,8 +12,6 @@ func IsAvailable() bool {
 }
 
 func Launch(title, thumbUrl string, video *models.VideoStream, audio models.AudioStream) error {
-	fmt.Print("\033[H\033[2J")
-
 	args := []string{
 		"--title=" + title,
 		"--force-media-title= ",
@@ -22,7 +20,6 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 
 	if video != nil {
 		args = append(args, video.Url, "--audio-file="+audio.Url)
-		fmt.Printf("\nPlaying: %s [%s / %s]\n", title, video.Quality, audio.Name)
 	} else {
 		args = append(args, audio.Url)
 		if thumbUrl != "" {
@@ -37,7 +34,6 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 		} else {
 			args = append(args, "--force-window")
 		}
-		fmt.Printf("\nPlaying: %s [Audio only / %s]\n", title, audio.Name)
 	}
 
 	cmd := exec.Command("mpv", args...)

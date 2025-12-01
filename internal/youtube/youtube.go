@@ -1,28 +1,25 @@
 package youtube
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"mpy-yt/internal/models"
 	"net/http"
-	"regexp"
-	"sort"
+	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
 var (
-	videoIdRegex  = regexp.MustCompile(`^[a-zA-Z0-9_-]{11}$`)
-	videoUrlRegex = regexp.MustCompile(`(?:v=|youtu\.be\/|\/shorts\/|\/embed\/|\/live\/|\/v\/)([a-zA-Z0-9_-]{11})`)
-	httpClient    = &http.Client{
-		Timeout: 15 * time.Second,
+	httpClient = &http.Client{
+		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			MaxIdleConns:       10,
 			IdleConnTimeout:    30 * time.Second,
 			DisableCompression: false,
+			DisableKeepAlives:  false,
+			MaxConnsPerHost:    10,
 		},
 	}
 	itagQualityMap = map[int]string{
@@ -75,95 +72,115 @@ type playerApiResponse struct {
 	VideoDetails struct {
 		Title         string `json:"title"`
 		IsLiveContent bool   `json:"isLiveContent"`
+		Thumbnail     struct {
+			Thumbnails []struct {
+				Url    string `json:"url"`
+				Width  int    `json:"width"`
+				Height int    `json:"height"`
+			} `json:"thumbnails"`
+		} `json:"thumbnail"`
 	} `json:"videoDetails"`
 	StreamingData *struct {
 		AdaptiveFormats []adaptiveFormat `json:"adaptiveFormats"`
 	} `json:"streamingData"`
 }
 
-func ExtractVideoId(identifier string) string {
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" {
+func ExtractVideoId(id string) string {
+	id = strings.TrimSpace(id)
+	if len(id) == 0 {
 		return ""
 	}
-	if videoIdRegex.MatchString(identifier) {
-		return identifier
+
+	if len(id) == 11 && isId(id) {
+		return id
 	}
-	match := videoUrlRegex.FindStringSubmatch(identifier)
-	if len(match) > 1 {
-		return match[1]
-	}
-	if len(identifier) > 11 {
-		prefix := identifier[:11]
-		next := identifier[11]
-		if (next == '&' || next == '?') && videoIdRegex.MatchString(prefix) {
-			return prefix
+
+	if len(id) > 11 && isId(id[:11]) {
+		c := id[11]
+		if c == '&' || c == '?' {
+			return id[:11]
 		}
 	}
+
+	if idx := strings.Index(id, "v="); idx != -1 {
+		sub := id[idx+2:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+	if idx := strings.Index(id, "youtu.be/"); idx != -1 {
+		sub := id[idx+9:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+	if idx := strings.Index(id, "/shorts/"); idx != -1 {
+		sub := id[idx+8:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+	if idx := strings.Index(id, "/embed/"); idx != -1 {
+		sub := id[idx+7:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+	if idx := strings.Index(id, "/live/"); idx != -1 {
+		sub := id[idx+6:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+	if idx := strings.Index(id, "/v/"); idx != -1 {
+		sub := id[idx+3:]
+		if len(sub) >= 11 && isId(sub[:11]) {
+			return sub[:11]
+		}
+	}
+
 	return ""
 }
 
-func GetPlayerData(videoId string) (*models.PlayerData, error) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var thumbnailUrl string
-	var playerData *models.PlayerData
-	var err error
-
-	go func() {
-		defer wg.Done()
-		thumbnailUrl = getHighestQualityThumbnail(videoId)
-	}()
-
-	go func() {
-		defer wg.Done()
-		playerData, err = attemptExtraction(videoId, clientAndroid)
-		if err != nil && (strings.Contains(strings.ToLower(err.Error()), "login_required") || strings.Contains(strings.ToLower(err.Error()), "age")) {
-			playerData, err = attemptExtraction(videoId, clientIos)
+func isId(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
 		}
-	}()
-
-	wg.Wait()
-
-	if playerData != nil {
-		playerData.ThumbnailUrl = thumbnailUrl
-		return playerData, nil
 	}
-	return nil, err
+	return true
 }
 
-func getHighestQualityThumbnail(videoId string) string {
-	maxResUrl := fmt.Sprintf("%s%s/maxresdefault.jpg", thumbnailBaseUrl, videoId)
-	resp, err := httpClient.Head(maxResUrl)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
-		return maxResUrl
+func GetPlayerData(videoId string) (*models.PlayerData, error) {
+	playerData, err := attemptExtraction(videoId, clientAndroid)
+	if err != nil {
+		lowerErr := strings.ToLower(err.Error())
+		if strings.Contains(lowerErr, "login_required") || strings.Contains(lowerErr, "age") {
+			return attemptExtraction(videoId, clientIos)
+		}
+		return nil, err
 	}
-	return fmt.Sprintf("%s%s/hqdefault.jpg", thumbnailBaseUrl, videoId)
+	return playerData, nil
 }
 
 func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, error) {
-	reqBody := map[string]interface{}{
-		"context": map[string]interface{}{
-			"client": map[string]interface{}{
-				"clientName":    cfg.Name,
-				"clientVersion": cfg.Version,
-				"deviceModel":   cfg.DeviceModel,
-				"hl":            "en",
-				"gl":            "US",
-			},
-			"user": map[string]interface{}{
-				"lockedSafetyMode": false,
-			},
-		},
-		"videoId":        videoId,
-		"contentCheckOk": true,
-		"racyCheckOk":    true,
-	}
+	var builder strings.Builder
+	builder.Grow(384 + len(videoId))
 
-	jsonBytes, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", apiEndpoint, bytes.NewBuffer(jsonBytes))
+	builder.WriteString(`{"context":{"client":{"clientName":"`)
+	builder.WriteString(cfg.Name)
+	builder.WriteString(`","clientVersion":"`)
+	builder.WriteString(cfg.Version)
+	if cfg.DeviceModel != "" {
+		builder.WriteString(`","deviceModel":"`)
+		builder.WriteString(cfg.DeviceModel)
+	}
+	builder.WriteString(`","hl":"en","gl":"US"},"user":{"lockedSafetyMode":false}},"videoId":"`)
+	builder.WriteString(videoId)
+	builder.WriteString(`","contentCheckOk":true,"racyCheckOk":true}`)
+
+	req, _ := http.NewRequest("POST", apiEndpoint, strings.NewReader(builder.String()))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Youtube-Client-Name", cfg.Id)
 	req.Header.Set("X-Youtube-Client-Version", cfg.Version)
@@ -207,23 +224,32 @@ func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, er
 		return nil, errors.New("no audio streams available for this video")
 	}
 
+	thumbUrl := ""
+	thumbs := apiResp.VideoDetails.Thumbnail.Thumbnails
+	if len(thumbs) > 0 {
+		thumbUrl = thumbs[len(thumbs)-1].Url
+	} else {
+		thumbUrl = fmt.Sprintf("%s%s/maxresdefault.jpg", thumbnailBaseUrl, videoId)
+	}
+
 	return &models.PlayerData{
-		Title:  strings.TrimSpace(apiResp.VideoDetails.Title),
-		Videos: videos,
-		Audios: audios,
+		Title:        strings.TrimSpace(apiResp.VideoDetails.Title),
+		ThumbnailUrl: thumbUrl,
+		Videos:       videos,
+		Audios:       audios,
 	}, nil
 }
 
 func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.AudioStream) {
-	videoMap := make(map[string]models.VideoStream)
-	audioMap := make(map[string]models.AudioStream)
+	videoMap := make(map[string]models.VideoStream, len(formats)/2)
+	audioMap := make(map[string]models.AudioStream, 6)
 
 	for _, fmt := range formats {
 		if fmt.Url == "" || fmt.Bitrate == 0 {
 			continue
 		}
 
-		if strings.Contains(fmt.MimeType, "video/") {
+		if strings.HasPrefix(fmt.MimeType, "video/") {
 			quality, ok := itagQualityMap[fmt.Itag]
 			if !ok {
 				continue
@@ -234,7 +260,7 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 					Quality: quality,
 				}
 			}
-		} else if strings.Contains(fmt.MimeType, "audio/") {
+		} else if strings.HasPrefix(fmt.MimeType, "audio/") {
 			langCode := "und"
 			displayName := "Original"
 			isDefault := false
@@ -269,19 +295,22 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 	for _, v := range videoMap {
 		videos = append(videos, v)
 	}
-	sort.Slice(videos, func(i, j int) bool {
-		return videos[i].Bitrate > videos[j].Bitrate
+	slices.SortFunc(videos, func(a, b models.VideoStream) int {
+		return int(b.Bitrate - a.Bitrate)
 	})
 
 	audios := make([]models.AudioStream, 0, len(audioMap))
 	for _, a := range audioMap {
 		audios = append(audios, a)
 	}
-	sort.Slice(audios, func(i, j int) bool {
-		if audios[i].IsDefault != audios[j].IsDefault {
-			return audios[i].IsDefault
+	slices.SortFunc(audios, func(a, b models.AudioStream) int {
+		if a.IsDefault != b.IsDefault {
+			if a.IsDefault {
+				return -1
+			}
+			return 1
 		}
-		return audios[i].Bitrate > audios[j].Bitrate
+		return int(b.Bitrate - a.Bitrate)
 	})
 
 	return videos, audios

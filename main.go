@@ -8,7 +8,6 @@ import (
 	"mpy-yt/internal/ui"
 	"mpy-yt/internal/youtube"
 	"os"
-	"strings"
 )
 
 func main() {
@@ -36,10 +35,6 @@ func main() {
 	}
 	audioOnly := *audioFlag || *audioLong
 
-	if audioOnly && quality != "" {
-		fmt.Println("Info: --audio flag is present, --quality flag will be ignored.")
-	}
-
 	args := flag.Args()
 	var identifier string
 	if len(args) > 0 {
@@ -52,7 +47,6 @@ func main() {
 
 	if !mpv.IsAvailable() {
 		fmt.Fprintln(os.Stderr, "Error: 'mpv' executable not found in your system's PATH.")
-		fmt.Fprintln(os.Stderr, "Please install mpv and ensure its location is included in the PATH environment variable.")
 		os.Exit(1)
 	}
 
@@ -71,15 +65,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Fetching video data for '%s'...\n", videoId)
 	playerData, err := youtube.GetPlayerData(videoId)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Print("\033[H\033[2J")
-	printMainHeader(playerData.Title)
 
 	selection := ui.GetStreamSelection(playerData, quality, lang, audioOnly)
 	if selection == nil {
@@ -98,14 +88,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", mpvErr)
 		os.Exit(1)
 	}
-}
-
-func printMainHeader(title string) {
-	fmt.Println(title)
-	width := len(title)
-	if width > 80 {
-		width = 80
-	}
-	fmt.Println(strings.Repeat("─", width))
-	fmt.Println()
+	fmt.Print("\033[H\033[2J")
 }
