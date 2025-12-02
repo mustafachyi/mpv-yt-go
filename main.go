@@ -11,12 +11,15 @@ import (
 )
 
 func main() {
-	qualityFlag := flag.String("q", "", "Stream quality")
-	qualityLong := flag.String("quality", "", "Stream quality")
-	langFlag := flag.String("l", "", "Audio language")
-	langLong := flag.String("language", "", "Audio language")
-	audioFlag := flag.Bool("a", false, "Play audio only")
-	audioLong := flag.Bool("audio", false, "Play audio only")
+	var quality, lang string
+	var audioOnly bool
+
+	flag.StringVar(&quality, "q", "", "Stream quality")
+	flag.StringVar(&quality, "quality", "", "Stream quality")
+	flag.StringVar(&lang, "l", "", "Audio language")
+	flag.StringVar(&lang, "language", "", "Audio language")
+	flag.BoolVar(&audioOnly, "a", false, "Play audio only")
+	flag.BoolVar(&audioOnly, "audio", false, "Play audio only")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <identifier>\n", os.Args[0])
@@ -24,16 +27,6 @@ func main() {
 	}
 
 	flag.Parse()
-
-	quality := *qualityFlag
-	if quality == "" {
-		quality = *qualityLong
-	}
-	lang := *langFlag
-	if lang == "" {
-		lang = *langLong
-	}
-	audioOnly := *audioFlag || *audioLong
 
 	args := flag.Args()
 	var identifier string

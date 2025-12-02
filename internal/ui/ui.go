@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+var stdin = bufio.NewScanner(os.Stdin)
+
 func GetIdentifierFromInput() string {
 	if clip := getClipboard(); clip != "" {
 		if youtube.ExtractVideoId(clip) != "" {
@@ -18,9 +20,8 @@ func GetIdentifierFromInput() string {
 	}
 
 	fmt.Print("Enter YouTube URL or Video ID: ")
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		return strings.TrimSpace(scanner.Text())
+	if stdin.Scan() {
+		return strings.TrimSpace(stdin.Text())
 	}
 	return ""
 }
@@ -64,8 +65,7 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 			return &videos[0]
 		}
 		if strings.EqualFold(qualityPref, "lowest") {
-			v := videos[len(videos)-1]
-			return &v
+			return &videos[len(videos)-1]
 		}
 
 		for i := range videos {
@@ -79,8 +79,7 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 			return &videos[0]
 		}
 
-		bestIdx := 0
-		minDiff := int(^uint(0) >> 1)
+		bestIdx, minDiff := 0, 1<<30
 
 		for i := range videos {
 			q := parseQuality(videos[i].Quality)
@@ -102,9 +101,8 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 	}
 	fmt.Print("> Select video [1]: ")
 
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	if stdin.Scan() {
+		line := strings.TrimSpace(stdin.Text())
 		if line == "" {
 			return &videos[0]
 		}
@@ -138,20 +136,14 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 	}
 
 	defaultIdx := 0
-	foundDefault := false
-	for i, a := range audios {
-		if a.IsDefault {
+	for i := range audios {
+		if audios[i].IsDefault {
 			defaultIdx = i
-			foundDefault = true
 			break
 		}
-	}
-	if !foundDefault {
-		for i, a := range audios {
-			if len(a.Language) >= 2 && (a.Language[0] == 'e' || a.Language[0] == 'E') && (a.Language[1] == 'n' || a.Language[1] == 'N') {
-				defaultIdx = i
-				break
-			}
+		lang := audios[i].Language
+		if len(lang) >= 2 && (lang[0]|32) == 'e' && (lang[1]|32) == 'n' {
+			defaultIdx = i
 		}
 	}
 
@@ -161,8 +153,9 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 				return &audios[i]
 			}
 		}
+		prefLen := len(langPref)
 		for i := range audios {
-			if len(audios[i].Language) >= len(langPref) && strings.EqualFold(audios[i].Language[:len(langPref)], langPref) {
+			if len(audios[i].Language) >= prefLen && strings.EqualFold(audios[i].Language[:prefLen], langPref) {
 				return &audios[i]
 			}
 		}
@@ -171,26 +164,25 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 
 	fmt.Println("\nAudio Track")
 	langCounts := make(map[string]int, len(audios))
-	for _, a := range audios {
-		langCounts[a.Name]++
+	for i := range audios {
+		langCounts[audios[i].Name]++
 	}
 
-	for i, a := range audios {
+	for i := range audios {
 		indicator := ""
 		if i == defaultIdx {
 			indicator = " (default)"
 		}
-		displayName := a.Name
+		displayName := audios[i].Name
 		if langCounts[displayName] > 1 {
-			displayName = fmt.Sprintf("%s (%s)", a.Name, a.Language)
+			displayName = audios[i].Name + " (" + audios[i].Language + ")"
 		}
 		fmt.Printf("  %d) %s%s\n", i+1, displayName, indicator)
 	}
 	fmt.Printf("> Select audio [%d]: ", defaultIdx+1)
 
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	if stdin.Scan() {
+		line := strings.TrimSpace(stdin.Text())
 		if line == "" {
 			return &audios[defaultIdx]
 		}

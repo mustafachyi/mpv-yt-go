@@ -43,21 +43,22 @@ func getClipboard() string {
 		return ""
 	}
 
+	n := int(sz / 2)
+
 	var s []uint16
-	hdr := (*struct {
+	sh := (*struct {
 		Data uintptr
 		Len  int
 		Cap  int
 	})(unsafe.Pointer(&s))
+	sh.Data = p
+	sh.Len = n
+	sh.Cap = n
 
-	hdr.Data = p
-	hdr.Len = int(sz / 2)
-	hdr.Cap = int(sz / 2)
-
-	n := 0
-	for n < len(s) && s[n] != 0 {
-		n++
+	end := 0
+	for end < n && s[end] != 0 {
+		end++
 	}
 
-	return syscall.UTF16ToString(s[:n])
+	return syscall.UTF16ToString(s[:end])
 }

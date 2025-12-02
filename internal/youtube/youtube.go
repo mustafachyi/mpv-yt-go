@@ -11,29 +11,30 @@ import (
 	"time"
 )
 
-var (
-	httpClient = &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:       10,
-			IdleConnTimeout:    30 * time.Second,
-			DisableCompression: false,
-			DisableKeepAlives:  false,
-			MaxConnsPerHost:    10,
-		},
-	}
-	itagQualityMap = map[int]string{
-		160: "144p", 278: "144p", 330: "144p", 394: "144p", 694: "144p",
-		133: "240p", 242: "240p", 331: "240p", 395: "240p", 695: "240p",
-		134: "360p", 243: "360p", 332: "360p", 396: "360p", 696: "360p",
-		135: "480p", 244: "480p", 333: "480p", 397: "480p", 697: "480p",
-		136: "720p", 247: "720p", 298: "720p", 302: "720p", 334: "720p", 398: "720p", 698: "720p",
-		137: "1080p", 299: "1080p", 248: "1080p", 303: "1080p", 335: "1080p", 399: "1080p", 699: "1080p",
-		264: "1440p", 271: "1440p", 304: "1440p", 308: "1440p", 336: "1440p", 400: "1440p", 700: "1440p",
-		266: "2160p", 305: "2160p", 313: "2160p", 315: "2160p", 337: "2160p", 401: "2160p", 701: "2160p",
-		138: "4320p", 272: "4320p", 402: "4320p", 571: "4320p",
-	}
-)
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		MaxConnsPerHost:     10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableCompression:  false,
+		DisableKeepAlives:   false,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConnsPerHost: 10,
+	},
+}
+
+var itagQualityMap = [702]string{
+	133: "240p", 134: "360p", 135: "480p", 136: "720p", 137: "1080p", 138: "4320p",
+	160: "144p", 242: "240p", 243: "360p", 244: "480p", 247: "720p", 248: "1080p",
+	264: "1440p", 266: "2160p", 271: "1440p", 272: "4320p", 278: "144p",
+	298: "720p", 299: "1080p", 302: "720p", 303: "1080p", 304: "1440p", 305: "2160p",
+	308: "1440p", 313: "2160p", 315: "2160p",
+	330: "144p", 331: "240p", 332: "360p", 333: "480p", 334: "720p", 335: "1080p", 336: "1440p", 337: "2160p",
+	394: "144p", 395: "240p", 396: "360p", 397: "480p", 398: "720p", 399: "1080p", 400: "1440p", 401: "2160p", 402: "4320p",
+	571: "4320p",
+	694: "144p", 695: "240p", 696: "360p", 697: "480p", 698: "720p", 699: "1080p", 700: "1440p", 701: "2160p",
+}
 
 const (
 	apiEndpoint      = "https://www.youtube.com/youtubei/v1/player"
@@ -41,15 +42,15 @@ const (
 )
 
 type clientConfig struct {
-	Name        string
-	Version     string
-	Id          string
-	DeviceModel string
+	name        string
+	version     string
+	id          string
+	deviceModel string
 }
 
 var (
-	clientAndroid = clientConfig{Name: "ANDROID", Version: "19.50.42", Id: "3"}
-	clientIos     = clientConfig{Name: "IOS", Version: "17.13.3", Id: "5", DeviceModel: "iPhone14,3"}
+	clientAndroid = clientConfig{"ANDROID", "19.50.42", "3", ""}
+	clientIos     = clientConfig{"IOS", "17.13.3", "5", "iPhone14,3"}
 )
 
 type adaptiveFormat struct {
@@ -74,9 +75,7 @@ type playerApiResponse struct {
 		IsLiveContent bool   `json:"isLiveContent"`
 		Thumbnail     struct {
 			Thumbnails []struct {
-				Url    string `json:"url"`
-				Width  int    `json:"width"`
-				Height int    `json:"height"`
+				Url string `json:"url"`
 			} `json:"thumbnails"`
 		} `json:"thumbnail"`
 	} `json:"videoDetails"`
@@ -85,67 +84,69 @@ type playerApiResponse struct {
 	} `json:"streamingData"`
 }
 
-func ExtractVideoId(id string) string {
-	id = strings.TrimSpace(id)
-	if len(id) == 0 {
+func ExtractVideoId(input string) string {
+	n := len(input)
+	if n == 0 {
 		return ""
 	}
 
-	if len(id) == 11 && isId(id) {
-		return id
+	start, end := 0, n
+	for start < end && input[start] <= ' ' {
+		start++
+	}
+	for end > start && input[end-1] <= ' ' {
+		end--
+	}
+	s := input[start:end]
+	n = len(s)
+
+	if n < 11 {
+		return ""
 	}
 
-	if len(id) > 11 && isId(id[:11]) {
-		c := id[11]
-		if c == '&' || c == '?' {
-			return id[:11]
+	if n == 11 && isValidId(s) {
+		return s
+	}
+
+	if n > 11 && isValidId(s[:11]) {
+		c := s[11]
+		if c == '&' || c == '?' || c == '/' || c <= ' ' {
+			return s[:11]
 		}
 	}
 
-	if idx := strings.Index(id, "v="); idx != -1 {
-		sub := id[idx+2:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
-		}
+	patterns := [...]struct {
+		prefix string
+		offset int
+	}{
+		{"v=", 2},
+		{"youtu.be/", 9},
+		{"/shorts/", 8},
+		{"/embed/", 7},
+		{"/live/", 6},
+		{"/v/", 3},
 	}
-	if idx := strings.Index(id, "youtu.be/"); idx != -1 {
-		sub := id[idx+9:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
-		}
-	}
-	if idx := strings.Index(id, "/shorts/"); idx != -1 {
-		sub := id[idx+8:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
-		}
-	}
-	if idx := strings.Index(id, "/embed/"); idx != -1 {
-		sub := id[idx+7:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
-		}
-	}
-	if idx := strings.Index(id, "/live/"); idx != -1 {
-		sub := id[idx+6:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
-		}
-	}
-	if idx := strings.Index(id, "/v/"); idx != -1 {
-		sub := id[idx+3:]
-		if len(sub) >= 11 && isId(sub[:11]) {
-			return sub[:11]
+
+	for _, p := range patterns {
+		if idx := strings.Index(s, p.prefix); idx != -1 {
+			sub := s[idx+p.offset:]
+			if len(sub) >= 11 && isValidId(sub[:11]) {
+				return sub[:11]
+			}
 		}
 	}
 
 	return ""
 }
 
-func isId(s string) bool {
-	for i := 0; i < len(s); i++ {
+func isValidId(s string) bool {
+	if len(s) != 11 {
+		return false
+	}
+	for i := 0; i < 11; i++ {
 		c := s[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+		valid := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_'
+		if !valid {
 			return false
 		}
 	}
@@ -153,37 +154,37 @@ func isId(s string) bool {
 }
 
 func GetPlayerData(videoId string) (*models.PlayerData, error) {
-	playerData, err := attemptExtraction(videoId, clientAndroid)
+	data, err := fetchPlayerData(videoId, clientAndroid)
 	if err != nil {
-		lowerErr := strings.ToLower(err.Error())
-		if strings.Contains(lowerErr, "login_required") || strings.Contains(lowerErr, "age") {
-			return attemptExtraction(videoId, clientIos)
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "login_required") || strings.Contains(errLower, "age") {
+			return fetchPlayerData(videoId, clientIos)
 		}
 		return nil, err
 	}
-	return playerData, nil
+	return data, nil
 }
 
-func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, error) {
-	var builder strings.Builder
-	builder.Grow(384 + len(videoId))
+func fetchPlayerData(videoId string, cfg clientConfig) (*models.PlayerData, error) {
+	var b strings.Builder
+	b.Grow(400)
 
-	builder.WriteString(`{"context":{"client":{"clientName":"`)
-	builder.WriteString(cfg.Name)
-	builder.WriteString(`","clientVersion":"`)
-	builder.WriteString(cfg.Version)
-	if cfg.DeviceModel != "" {
-		builder.WriteString(`","deviceModel":"`)
-		builder.WriteString(cfg.DeviceModel)
+	b.WriteString(`{"context":{"client":{"clientName":"`)
+	b.WriteString(cfg.name)
+	b.WriteString(`","clientVersion":"`)
+	b.WriteString(cfg.version)
+	if cfg.deviceModel != "" {
+		b.WriteString(`","deviceModel":"`)
+		b.WriteString(cfg.deviceModel)
 	}
-	builder.WriteString(`","hl":"en","gl":"US"},"user":{"lockedSafetyMode":false}},"videoId":"`)
-	builder.WriteString(videoId)
-	builder.WriteString(`","contentCheckOk":true,"racyCheckOk":true}`)
+	b.WriteString(`","hl":"en","gl":"US"},"user":{"lockedSafetyMode":false}},"videoId":"`)
+	b.WriteString(videoId)
+	b.WriteString(`","contentCheckOk":true,"racyCheckOk":true}`)
 
-	req, _ := http.NewRequest("POST", apiEndpoint, strings.NewReader(builder.String()))
+	req, _ := http.NewRequest(http.MethodPost, apiEndpoint, strings.NewReader(b.String()))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Youtube-Client-Name", cfg.Id)
-	req.Header.Set("X-Youtube-Client-Version", cfg.Version)
+	req.Header.Set("X-Youtube-Client-Name", cfg.id)
+	req.Header.Set("X-Youtube-Client-Version", cfg.version)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -192,7 +193,7 @@ func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, er
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("api request failed with status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("api request failed: %d", resp.StatusCode)
 	}
 
 	var apiResp playerApiResponse
@@ -225,11 +226,10 @@ func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, er
 	}
 
 	thumbUrl := ""
-	thumbs := apiResp.VideoDetails.Thumbnail.Thumbnails
-	if len(thumbs) > 0 {
+	if thumbs := apiResp.VideoDetails.Thumbnail.Thumbnails; len(thumbs) > 0 {
 		thumbUrl = thumbs[len(thumbs)-1].Url
 	} else {
-		thumbUrl = fmt.Sprintf("%s%s/maxresdefault.jpg", thumbnailBaseUrl, videoId)
+		thumbUrl = thumbnailBaseUrl + videoId + "/maxresdefault.jpg"
 	}
 
 	return &models.PlayerData{
@@ -241,48 +241,58 @@ func attemptExtraction(videoId string, cfg clientConfig) (*models.PlayerData, er
 }
 
 func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.AudioStream) {
-	videoMap := make(map[string]models.VideoStream, len(formats)/2)
+	videoMap := make(map[string]models.VideoStream, 8)
 	audioMap := make(map[string]models.AudioStream, 6)
 
-	for _, fmt := range formats {
-		if fmt.Url == "" || fmt.Bitrate == 0 {
+	for i := range formats {
+		f := &formats[i]
+		if f.Url == "" || f.Bitrate == 0 {
 			continue
 		}
 
-		if strings.HasPrefix(fmt.MimeType, "video/") {
-			quality, ok := itagQualityMap[fmt.Itag]
-			if !ok {
+		mime := f.MimeType
+		if len(mime) < 6 {
+			continue
+		}
+
+		if mime[0] == 'v' && mime[4] == 'o' {
+			if f.Itag < 0 || f.Itag >= len(itagQualityMap) {
 				continue
 			}
-			if existing, exists := videoMap[quality]; !exists || fmt.Bitrate > existing.Bitrate {
+			quality := itagQualityMap[f.Itag]
+			if quality == "" {
+				continue
+			}
+			if existing, exists := videoMap[quality]; !exists || f.Bitrate > existing.Bitrate {
 				videoMap[quality] = models.VideoStream{
-					Stream:  models.Stream{Url: fmt.Url, Bitrate: fmt.Bitrate},
+					Stream:  models.Stream{Url: f.Url, Bitrate: f.Bitrate},
 					Quality: quality,
 				}
 			}
-		} else if strings.HasPrefix(fmt.MimeType, "audio/") {
+		} else if mime[0] == 'a' && mime[4] == 'o' {
 			langCode := "und"
 			displayName := "Original"
 			isDefault := false
 
-			if fmt.AudioTrack != nil {
-				if fmt.AudioTrack.DisplayName != "" {
-					displayName = fmt.AudioTrack.DisplayName
+			if f.AudioTrack != nil {
+				if f.AudioTrack.DisplayName != "" {
+					displayName = f.AudioTrack.DisplayName
 				} else {
 					displayName = "Unknown"
 				}
-				if fmt.AudioTrack.Id != "" {
-					parts := strings.Split(fmt.AudioTrack.Id, ".")
-					if len(parts) > 0 {
-						langCode = parts[0]
+				if id := f.AudioTrack.Id; id != "" {
+					if dotIdx := strings.IndexByte(id, '.'); dotIdx > 0 {
+						langCode = id[:dotIdx]
+					} else {
+						langCode = id
 					}
 				}
-				isDefault = fmt.AudioTrack.AudioIsDefault
+				isDefault = f.AudioTrack.AudioIsDefault
 			}
 
-			if existing, exists := audioMap[langCode]; !exists || fmt.Bitrate > existing.Bitrate {
+			if existing, exists := audioMap[langCode]; !exists || f.Bitrate > existing.Bitrate {
 				audioMap[langCode] = models.AudioStream{
-					Stream:    models.Stream{Url: fmt.Url, Bitrate: fmt.Bitrate},
+					Stream:    models.Stream{Url: f.Url, Bitrate: f.Bitrate},
 					Language:  langCode,
 					Name:      displayName,
 					IsDefault: isDefault,

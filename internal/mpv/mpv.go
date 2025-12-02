@@ -12,28 +12,40 @@ func IsAvailable() bool {
 }
 
 func Launch(title, thumbUrl string, video *models.VideoStream, audio models.AudioStream) error {
-	args := []string{
-		"--title=" + title,
-		"--force-media-title= ",
-		"--keep-open=yes",
-	}
+	var args []string
 
 	if video != nil {
-		args = append(args, video.Url, "--audio-file="+audio.Url)
+		args = make([]string, 0, 5)
+		args = append(args,
+			"--title="+title,
+			"--force-media-title= ",
+			"--keep-open=yes",
+			video.Url,
+			"--audio-file="+audio.Url,
+		)
+	} else if thumbUrl != "" {
+		args = make([]string, 0, 10)
+		args = append(args,
+			"--title="+title,
+			"--force-media-title= ",
+			"--keep-open=yes",
+			audio.Url,
+			"--external-file="+thumbUrl,
+			"--vid=1",
+			"--image-display-duration=inf",
+			"--force-window=immediate",
+			"--video-unscaled=yes",
+			"--terminal=no",
+		)
 	} else {
-		args = append(args, audio.Url)
-		if thumbUrl != "" {
-			args = append(args,
-				"--external-file="+thumbUrl,
-				"--vid=1",
-				"--image-display-duration=inf",
-				"--force-window=immediate",
-				"--video-unscaled=yes",
-				"--terminal=no",
-			)
-		} else {
-			args = append(args, "--force-window")
-		}
+		args = make([]string, 0, 5)
+		args = append(args,
+			"--title="+title,
+			"--force-media-title= ",
+			"--keep-open=yes",
+			audio.Url,
+			"--force-window",
+		)
 	}
 
 	cmd := exec.Command("mpv", args...)
