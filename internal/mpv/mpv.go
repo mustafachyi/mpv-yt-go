@@ -15,43 +15,41 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 	var args []string
 
 	if video != nil {
-		args = make([]string, 0, 5)
-		args = append(args,
-			"--title="+title,
+		args = []string{
+			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
 			video.Url,
-			"--audio-file="+audio.Url,
-		)
+			"--audio-file=" + audio.Url,
+		}
 	} else if thumbUrl != "" {
-		args = make([]string, 0, 10)
-		args = append(args,
-			"--title="+title,
+		args = []string{
+			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
 			audio.Url,
-			"--external-file="+thumbUrl,
+			"--external-file=" + thumbUrl,
 			"--vid=1",
 			"--image-display-duration=inf",
 			"--force-window=immediate",
 			"--video-unscaled=yes",
 			"--terminal=no",
-		)
+		}
 	} else {
-		args = make([]string, 0, 5)
-		args = append(args,
-			"--title="+title,
+		args = []string{
+			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
 			audio.Url,
 			"--force-window",
-		)
+		}
 	}
 
 	cmd := exec.Command("mpv", args...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	detachProcess(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error launching mpv: %w", err)
