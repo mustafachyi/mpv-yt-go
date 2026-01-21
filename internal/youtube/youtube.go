@@ -7,6 +7,7 @@ import (
 	"mpy-yt/internal/models"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -50,15 +51,16 @@ type clientConfig struct {
 
 var (
 	clientAndroid = clientConfig{"ANDROID", "19.50.42", "3", ""}
-	clientIos     = clientConfig{"IOS", "17.13.3", "5", "iPhone14,3"}
+	clientIos     = clientConfig{"IOS", "21.03.2", "5", "iPhone14,3"}
 )
 
 type adaptiveFormat struct {
-	Url        string `json:"url"`
-	Bitrate    int64  `json:"bitrate"`
-	MimeType   string `json:"mimeType"`
-	Itag       int    `json:"itag"`
-	AudioTrack *struct {
+	Url           string `json:"url"`
+	Bitrate       int64  `json:"bitrate"`
+	MimeType      string `json:"mimeType"`
+	Itag          int    `json:"itag"`
+	ContentLength string `json:"contentLength"`
+	AudioTrack    *struct {
 		DisplayName    string `json:"displayName"`
 		Id             string `json:"id"`
 		AudioIsDefault bool   `json:"audioIsDefault"`
@@ -255,6 +257,8 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 			continue
 		}
 
+		size, _ := strconv.ParseInt(f.ContentLength, 10, 64)
+
 		if mime[0] == 'v' && mime[4] == 'o' {
 			if f.Itag < 0 || f.Itag >= len(itagQualityMap) {
 				continue
@@ -276,10 +280,11 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 				if f.Bitrate > videos[found].Bitrate {
 					videos[found].Url = f.Url
 					videos[found].Bitrate = f.Bitrate
+					videos[found].Size = size
 				}
 			} else {
 				videos = append(videos, models.VideoStream{
-					Stream:  models.Stream{Url: f.Url, Bitrate: f.Bitrate},
+					Stream:  models.Stream{Url: f.Url, Bitrate: f.Bitrate, Size: size},
 					Quality: quality,
 				})
 			}
@@ -317,12 +322,13 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 				if f.Bitrate > audios[found].Bitrate {
 					audios[found].Url = f.Url
 					audios[found].Bitrate = f.Bitrate
+					audios[found].Size = size
 					audios[found].Name = displayName
 					audios[found].IsDefault = isDefault
 				}
 			} else {
 				audios = append(audios, models.AudioStream{
-					Stream:    models.Stream{Url: f.Url, Bitrate: f.Bitrate},
+					Stream:    models.Stream{Url: f.Url, Bitrate: f.Bitrate, Size: size},
 					Language:  langCode,
 					Name:      displayName,
 					IsDefault: isDefault,

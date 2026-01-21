@@ -3,6 +3,7 @@ package models
 type Stream struct {
 	Url     string
 	Bitrate int64
+	Size    int64
 }
 
 type VideoStream struct {

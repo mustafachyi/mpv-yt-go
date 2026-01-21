@@ -3,6 +3,7 @@ package mpv
 import (
 	"fmt"
 	"mpy-yt/internal/models"
+	"mpy-yt/internal/proxy"
 	"os/exec"
 )
 
@@ -12,6 +13,18 @@ func IsAvailable() bool {
 }
 
 func Launch(title, thumbUrl string, video *models.VideoStream, audio models.AudioStream) error {
+	var vStream, aStream *models.Stream
+	if video != nil {
+		vStream = &video.Stream
+	}
+	aStream = &audio.Stream
+
+	srv, vUrl, aUrl, err := proxy.Start(vStream, aStream)
+	if err != nil {
+		return fmt.Errorf("failed to start proxy: %w", err)
+	}
+	defer srv.Close()
+
 	var args []string
 
 	if video != nil {
@@ -19,15 +32,19 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
-			video.Url,
-			"--audio-file=" + audio.Url,
+			"--cache=yes",
+			"--demuxer-max-bytes=256MiB",
+			vUrl,
+			"--audio-file=" + aUrl,
 		}
 	} else if thumbUrl != "" {
 		args = []string{
 			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
-			audio.Url,
+			"--cache=yes",
+			"--demuxer-max-bytes=256MiB",
+			aUrl,
 			"--external-file=" + thumbUrl,
 			"--vid=1",
 			"--image-display-duration=inf",
@@ -40,7 +57,9 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--title=" + title,
 			"--force-media-title= ",
 			"--keep-open=yes",
-			audio.Url,
+			"--cache=yes",
+			"--demuxer-max-bytes=256MiB",
+			aUrl,
 			"--force-window",
 		}
 	}
@@ -49,10 +68,10 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	detachProcess(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error launching mpv: %w", err)
 	}
-	return nil
+
+	return cmd.Wait()
 }
