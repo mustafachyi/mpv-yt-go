@@ -7,36 +7,47 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
-func getClipboard() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
+var (
+	clipboardBin  string
+	clipboardArgs []string
+	clipboardOnce sync.Once
+)
 
-	var bin string
-	var args []string
-
+func resolveClipboard() {
 	if os.Getenv("WAYLAND_DISPLAY") != "" {
-		bin = "wl-paste"
-	} else {
-		bin = "xclip"
-		args = []string{"-o", "-selection", "clipboard"}
-	}
-
-	if _, err := exec.LookPath(bin); err != nil {
-		if bin == "xclip" {
-			bin = "xsel"
-			args = []string{"-ob"}
-			if _, err := exec.LookPath(bin); err != nil {
-				return ""
-			}
-		} else {
-			return ""
+		if _, err := exec.LookPath("wl-paste"); err == nil {
+			clipboardBin = "wl-paste"
+			return
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, bin, args...)
+	if _, err := exec.LookPath("xclip"); err == nil {
+		clipboardBin = "xclip"
+		clipboardArgs = []string{"-o", "-selection", "clipboard"}
+		return
+	}
+
+	if _, err := exec.LookPath("xsel"); err == nil {
+		clipboardBin = "xsel"
+		clipboardArgs = []string{"-ob"}
+		return
+	}
+}
+
+func getClipboard() string {
+	clipboardOnce.Do(resolveClipboard)
+	if clipboardBin == "" {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, clipboardBin, clipboardArgs...)
 	out, err := cmd.Output()
 	if err != nil {
 		return ""

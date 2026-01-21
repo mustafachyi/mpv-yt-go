@@ -13,7 +13,7 @@ import (
 var stdin = bufio.NewScanner(os.Stdin)
 
 func GetIdentifierFromInput() string {
-	if clip := getClipboard(); clip != "" {
+	if clip := getClipboard(); clip != "" && len(clip) < 2048 {
 		if youtube.ExtractVideoId(clip) != "" {
 			return clip
 		}
@@ -110,7 +110,7 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 			return &videos[choice-1]
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Invalid selection.")
+	os.Stderr.WriteString("Invalid selection.\n")
 	return nil
 }
 
@@ -190,6 +190,6 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 			return &audios[choice-1]
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Invalid selection.")
+	os.Stderr.WriteString("Invalid selection.\n")
 	return nil
 }

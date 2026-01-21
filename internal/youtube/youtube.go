@@ -241,8 +241,8 @@ func fetchPlayerData(videoId string, cfg clientConfig) (*models.PlayerData, erro
 }
 
 func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.AudioStream) {
-	videoMap := make(map[string]models.VideoStream, 8)
-	audioMap := make(map[string]models.AudioStream, 6)
+	videos := make([]models.VideoStream, 0, 8)
+	audios := make([]models.AudioStream, 0, 6)
 
 	for i := range formats {
 		f := &formats[i]
@@ -263,12 +263,27 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 			if quality == "" {
 				continue
 			}
-			if existing, exists := videoMap[quality]; !exists || f.Bitrate > existing.Bitrate {
-				videoMap[quality] = models.VideoStream{
-					Stream:  models.Stream{Url: f.Url, Bitrate: f.Bitrate},
-					Quality: quality,
+
+			found := -1
+			for j := range videos {
+				if videos[j].Quality == quality {
+					found = j
+					break
 				}
 			}
+
+			if found != -1 {
+				if f.Bitrate > videos[found].Bitrate {
+					videos[found].Url = f.Url
+					videos[found].Bitrate = f.Bitrate
+				}
+			} else {
+				videos = append(videos, models.VideoStream{
+					Stream:  models.Stream{Url: f.Url, Bitrate: f.Bitrate},
+					Quality: quality,
+				})
+			}
+
 		} else if mime[0] == 'a' && mime[4] == 'o' {
 			langCode := "und"
 			displayName := "Original"
@@ -290,29 +305,36 @@ func parseStreams(formats []adaptiveFormat) ([]models.VideoStream, []models.Audi
 				isDefault = f.AudioTrack.AudioIsDefault
 			}
 
-			if existing, exists := audioMap[langCode]; !exists || f.Bitrate > existing.Bitrate {
-				audioMap[langCode] = models.AudioStream{
+			found := -1
+			for j := range audios {
+				if audios[j].Language == langCode {
+					found = j
+					break
+				}
+			}
+
+			if found != -1 {
+				if f.Bitrate > audios[found].Bitrate {
+					audios[found].Url = f.Url
+					audios[found].Bitrate = f.Bitrate
+					audios[found].Name = displayName
+					audios[found].IsDefault = isDefault
+				}
+			} else {
+				audios = append(audios, models.AudioStream{
 					Stream:    models.Stream{Url: f.Url, Bitrate: f.Bitrate},
 					Language:  langCode,
 					Name:      displayName,
 					IsDefault: isDefault,
-				}
+				})
 			}
 		}
 	}
 
-	videos := make([]models.VideoStream, 0, len(videoMap))
-	for _, v := range videoMap {
-		videos = append(videos, v)
-	}
 	slices.SortFunc(videos, func(a, b models.VideoStream) int {
 		return int(b.Bitrate - a.Bitrate)
 	})
 
-	audios := make([]models.AudioStream, 0, len(audioMap))
-	for _, a := range audioMap {
-		audios = append(audios, a)
-	}
 	slices.SortFunc(audios, func(a, b models.AudioStream) int {
 		if a.IsDefault != b.IsDefault {
 			if a.IsDefault {
