@@ -54,11 +54,34 @@ func Start(video, audio *models.Stream) (*Server, string, string, error) {
 
 	go http.Serve(l, s)
 
+	go func() {
+		if video != nil {
+			warmUp(video.Url)
+		}
+		if audio != nil {
+			warmUp(audio.Url)
+		}
+	}()
+
 	port := l.Addr().(*net.TCPAddr).Port
 	vUrl := fmt.Sprintf("http://127.0.0.1:%d/v", port)
 	aUrl := fmt.Sprintf("http://127.0.0.1:%d/a", port)
 
 	return s, vUrl, aUrl, nil
+}
+
+func warmUp(url string) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
 }
 
 func (s *Server) Close() {

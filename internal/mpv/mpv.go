@@ -34,6 +34,10 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--keep-open=yes",
 			"--cache=yes",
 			"--demuxer-max-bytes=256MiB",
+			"--no-ytdl",
+			"--hwdec=auto",
+			"--force-window=yes",
+			"--terminal=no",
 			vUrl,
 			"--audio-file=" + aUrl,
 		}
@@ -44,13 +48,14 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--keep-open=yes",
 			"--cache=yes",
 			"--demuxer-max-bytes=256MiB",
+			"--no-ytdl",
+			"--force-window=yes",
+			"--terminal=no",
 			aUrl,
 			"--external-file=" + thumbUrl,
 			"--vid=1",
 			"--image-display-duration=inf",
-			"--force-window=immediate",
 			"--video-unscaled=yes",
-			"--terminal=no",
 		}
 	} else {
 		args = []string{
@@ -59,6 +64,8 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--keep-open=yes",
 			"--cache=yes",
 			"--demuxer-max-bytes=256MiB",
+			"--no-ytdl",
+			"--terminal=no",
 			aUrl,
 			"--force-window",
 		}
