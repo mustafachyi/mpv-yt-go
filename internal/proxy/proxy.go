@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	chunkSizeMin = 256 * 1024
-	chunkSizeMax = 10 * 1024 * 1024
-	dialTimeout  = 10 * time.Second
+	chunkSize   = 10 * 1024 * 1024
+	dialTimeout = 10 * time.Second
 )
 
 var transport = &http.Transport{
@@ -29,6 +28,7 @@ var transport = &http.Transport{
 	MaxIdleConns:          100,
 	IdleConnTimeout:       90 * time.Second,
 	TLSHandshakeTimeout:   10 * time.Second,
+	ResponseHeaderTimeout: 15 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
 	ForceAttemptHTTP2:     true,
 	MaxIdleConnsPerHost:   20,
@@ -41,7 +41,7 @@ var client = &http.Client{
 
 var bufPool = sync.Pool{
 	New: func() any {
-		b := make([]byte, 32*1024)
+		b := make([]byte, 128*1024)
 		return &b
 	},
 }
@@ -152,7 +152,6 @@ type result struct {
 
 func (s *Server) stream(ctx context.Context, w io.Writer, url string, start, total int64) {
 	offset := start
-	chunkSize := int64(chunkSizeMin)
 	nextCh := make(chan result, 1)
 	fetch := func(off, size int64) {
 		end := off + size
@@ -185,7 +184,6 @@ func (s *Server) stream(ctx context.Context, w io.Writer, url string, start, tot
 			return
 		}
 		if res.end < total {
-			chunkSize = chunkSizeMax
 			fetch(res.end, chunkSize)
 		}
 		n, err := io.CopyBuffer(w, res.resp.Body, buf)
