@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	chunkSize        = 10_000_000
+	chunkSize        = 10 * 1024 * 1024
 	initialChunkSize = 256 * 1024
 )
 
@@ -149,6 +149,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp, err := client.Do(req)
 		if err != nil {
 			return
+		}
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+			resp.Body.Close()
+			break
 		}
 
 		bufPtr := bufPool.Get().(*[]byte)
