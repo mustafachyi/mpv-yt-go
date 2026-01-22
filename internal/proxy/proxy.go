@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-const chunkSize = 10 * 1024 * 1024
+const (
+	chunkSize        = 10_000_000
+	initialChunkSize = 256 * 1024
+)
 
 var transport = &http.Transport{
 	MaxIdleConns:        10,
@@ -128,8 +131,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusPartialContent)
 
 	offset := startByte
+	currentChunkSize := int64(initialChunkSize)
+
 	for offset < total {
-		end := offset + chunkSize
+		end := offset + currentChunkSize
 		if end > total {
 			end = total
 		}
@@ -163,5 +168,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if offset >= total {
 			break
 		}
+
+		currentChunkSize = chunkSize
 	}
 }
