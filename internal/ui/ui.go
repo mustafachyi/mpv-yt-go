@@ -18,7 +18,6 @@ func GetIdentifierFromInput() string {
 			return clip
 		}
 	}
-
 	fmt.Print("Enter YouTube URL or Video ID: ")
 	if stdin.Scan() {
 		return strings.TrimSpace(stdin.Text())
@@ -26,37 +25,24 @@ func GetIdentifierFromInput() string {
 	return ""
 }
 
-func GetStreamSelection(data *models.PlayerData, qualityPref, langPref string, audioOnly bool) models.StreamSelection {
+func GetStreamSelection(data *models.PlayerData, qualityPref, langPref string, audioOnly bool) (*models.VideoStream, *models.AudioStream) {
 	if audioOnly {
-		if audio := selectAudio(data.Audios, langPref); audio != nil {
-			return models.AudioSelection{Audio: *audio}
-		}
-		return nil
+		return nil, selectAudio(data.Audios, langPref)
 	}
-
 	if len(data.Videos) == 0 {
-		if audio := selectAudio(data.Audios, langPref); audio != nil {
-			return models.AudioSelection{Audio: *audio}
-		}
-		return nil
+		return nil, selectAudio(data.Audios, langPref)
 	}
-
 	video := selectVideo(data.Videos, qualityPref)
 	if video == nil {
-		return nil
+		return nil, nil
 	}
-
 	if qualityPref == "" && langPref == "" {
 		fmt.Print("\033[H\033[2J")
 		fmt.Println(data.Title)
 		fmt.Println()
 		fmt.Printf("Video Quality: %s\n", video.Quality)
 	}
-
-	if audio := selectAudio(data.Audios, langPref); audio != nil {
-		return models.VideoSelection{Video: *video, Audio: *audio}
-	}
-	return nil
+	return video, selectAudio(data.Audios, langPref)
 }
 
 func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoStream {
@@ -67,20 +53,16 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 		if strings.EqualFold(qualityPref, "lowest") {
 			return &videos[len(videos)-1]
 		}
-
 		for i := range videos {
 			if strings.EqualFold(videos[i].Quality, qualityPref) {
 				return &videos[i]
 			}
 		}
-
 		reqQuality := parseQuality(qualityPref)
 		if reqQuality == -1 {
 			return &videos[0]
 		}
-
 		bestIdx, minDiff := 0, 1<<30
-
 		for i := range videos {
 			q := parseQuality(videos[i].Quality)
 			diff := q - reqQuality
@@ -94,13 +76,11 @@ func selectVideo(videos []models.VideoStream, qualityPref string) *models.VideoS
 		}
 		return &videos[bestIdx]
 	}
-
 	fmt.Println("Video Quality")
 	for i, v := range videos {
 		fmt.Printf("  %d) %s\n", i+1, v.Quality)
 	}
 	fmt.Print("> Select video [1]: ")
-
 	if stdin.Scan() {
 		line := strings.TrimSpace(stdin.Text())
 		if line == "" {
@@ -134,7 +114,6 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 	if len(audios) == 1 {
 		return &audios[0]
 	}
-
 	defaultIdx := 0
 	for i := range audios {
 		if audios[i].IsDefault {
@@ -146,7 +125,6 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 			defaultIdx = i
 		}
 	}
-
 	if langPref != "" {
 		for i := range audios {
 			if strings.EqualFold(audios[i].Language, langPref) {
@@ -161,13 +139,11 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 		}
 		return &audios[defaultIdx]
 	}
-
 	fmt.Println("\nAudio Track")
 	langCounts := make(map[string]int, len(audios))
 	for i := range audios {
 		langCounts[audios[i].Name]++
 	}
-
 	for i := range audios {
 		indicator := ""
 		if i == defaultIdx {
@@ -180,7 +156,6 @@ func selectAudio(audios []models.AudioStream, langPref string) *models.AudioStre
 		fmt.Printf("  %d) %s%s\n", i+1, displayName, indicator)
 	}
 	fmt.Printf("> Select audio [%d]: ", defaultIdx+1)
-
 	if stdin.Scan() {
 		line := strings.TrimSpace(stdin.Text())
 		if line == "" {

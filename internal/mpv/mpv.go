@@ -7,17 +7,14 @@ import (
 	"os/exec"
 )
 
-func IsAvailable() bool {
-	_, err := exec.LookPath("mpv")
-	return err == nil
-}
-
-func Launch(title, thumbUrl string, video *models.VideoStream, audio models.AudioStream) error {
+func Launch(title, thumbUrl string, video *models.VideoStream, audio *models.AudioStream) error {
 	var vStream, aStream *models.Stream
 	if video != nil {
 		vStream = &video.Stream
 	}
-	aStream = &audio.Stream
+	if audio != nil {
+		aStream = &audio.Stream
+	}
 
 	srv, vUrl, aUrl, err := proxy.Start(vStream, aStream)
 	if err != nil {
@@ -26,7 +23,6 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 	defer srv.Close()
 
 	var args []string
-
 	if video != nil {
 		args = []string{
 			"--title=" + title,
@@ -36,6 +32,14 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--demuxer-max-bytes=256MiB",
 			"--no-ytdl",
 			"--hwdec=auto",
+			"--profile=fast",
+			"--gpu-dumb-mode=yes",
+			"--vd-lavc-skiploopfilter=nonref",
+			"--vd-lavc-threads=0",
+			"--sws-allow-zimg=no",
+			"--sws-fast",
+			"--framedrop=vo",
+			"--priority=high",
 			"--force-window=yes",
 			"--terminal=no",
 			vUrl,
@@ -49,6 +53,9 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--cache=yes",
 			"--demuxer-max-bytes=256MiB",
 			"--no-ytdl",
+			"--profile=fast",
+			"--sws-fast",
+			"--framedrop=vo",
 			"--force-window=yes",
 			"--terminal=no",
 			aUrl,
@@ -66,6 +73,8 @@ func Launch(title, thumbUrl string, video *models.VideoStream, audio models.Audi
 			"--demuxer-max-bytes=256MiB",
 			"--no-ytdl",
 			"--terminal=no",
+			"--vo=null",
+			"--vid=no",
 			aUrl,
 			"--force-window",
 		}

@@ -24,20 +24,3 @@ type PlayerData struct {
 	Videos       []VideoStream
 	Audios       []AudioStream
 }
-
-type StreamSelection interface {
-	isSelection()
-}
-
-type VideoSelection struct {
-	Video VideoStream
-	Audio AudioStream
-}
-
-func (VideoSelection) isSelection() {}
-
-type AudioSelection struct {
-	Audio AudioStream
-}
-
-func (AudioSelection) isSelection() {}
